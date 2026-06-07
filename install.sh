@@ -40,16 +40,20 @@ MARKER="# focus-block"
 
 case "${1:-on}" in
   on)
+    block=""
     for site in "${BLOCKED_SITES[@]}"; do
-      echo "127.0.0.1 $site $MARKER" | sudo tee -a /etc/hosts > /dev/null
+      block+="127.0.0.1 $site $MARKER"$'\n'
     done
-    pkill -RTMIN+11 waybar 2>/dev/null || true
-    echo "Blocked: X, YouTube, Reddit"
+    if printf '%s' "$block" | sudo tee -a /etc/hosts > /dev/null; then
+      pkill -RTMIN+11 waybar 2>/dev/null || true
+      echo "Blocked: X, YouTube, Reddit"
+    fi
     ;;
   off)
-    sudo sed -i "/$MARKER/d" /etc/hosts
-    pkill -RTMIN+11 waybar 2>/dev/null || true
-    echo "Unblocked all sites"
+    if sudo sed -i "/$MARKER/d" /etc/hosts; then
+      pkill -RTMIN+11 waybar 2>/dev/null || true
+      echo "Unblocked all sites"
+    fi
     ;;
   *)
     echo "Usage: focus [on|off]"
