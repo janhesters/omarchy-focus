@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# Install a focus mode that blocks distracting websites (X, YouTube, Reddit)
-# via /etc/hosts, with a waybar indicator showing when focus mode is active.
+# Install a focus mode that blocks distracting websites
+# (X, YouTube, Reddit, Threads, Instagram) via /etc/hosts, with a waybar
+# indicator showing when focus mode is active.
 #
 # Usage after install:
 #   focus       - Block sites
@@ -34,6 +35,10 @@ BLOCKED_SITES=(
   "reddit.com"
   "www.reddit.com"
   "old.reddit.com"
+  "threads.com"
+  "www.threads.com"
+  "instagram.com"
+  "www.instagram.com"
 )
 
 MARKER="# focus-block"
@@ -46,7 +51,7 @@ case "${1:-on}" in
     done
     if printf '%s' "$block" | sudo tee -a /etc/hosts > /dev/null; then
       pkill -RTMIN+11 waybar 2>/dev/null || true
-      echo "Blocked: X, YouTube, Reddit"
+      echo "Blocked: X, YouTube, Reddit, Threads, Instagram"
     fi
     ;;
   off)
@@ -125,6 +130,6 @@ omarchy-restart-waybar 2>/dev/null || true
 
 echo "[focus] Done."
 echo ""
-echo "  focus        Block X, YouTube, Reddit"
+echo "  focus        Block X, YouTube, Reddit, Threads, Instagram"
 echo "  focus off    Unblock all sites"
 echo "  Waybar icon turns red when focus mode is active"

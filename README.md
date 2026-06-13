@@ -40,6 +40,10 @@ BLOCKED_SITES=(
   "reddit.com"
   "www.reddit.com"
   "old.reddit.com"
+  "threads.com"
+  "www.threads.com"
+  "instagram.com"
+  "www.instagram.com"
 )
 ```
 
