@@ -1,0 +1,245 @@
+#!/bin/bash
+
+set -euo pipefail
+
+PLUGIN_ID="io.github.janhesters.focus"
+MARKER_BEGIN="# >>> omarchy-focus >>>"
+MARKER_END="# <<< omarchy-focus <<<"
+LEGACY_MARKER="# focus-block"
+SELF_PATH=$(readlink -f "${BASH_SOURCE[0]}")
+PLUGIN_DIR=$(cd -- "$(dirname -- "$SELF_PATH")" && pwd)
+DEFAULT_SITES_FILE="$PLUGIN_DIR/default-sites"
+TESTING="${OMARCHY_FOCUS_TESTING:-0}"
+
+if [[ $TESTING == 1 ]]; then
+  HOSTS_FILE="${OMARCHY_FOCUS_HOSTS_FILE:?OMARCHY_FOCUS_HOSTS_FILE is required while testing}"
+  SITES_FILE="${OMARCHY_FOCUS_SITES_FILE:-$DEFAULT_SITES_FILE}"
+else
+  HOSTS_FILE=/etc/hosts
+  config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+  if (( EUID == 0 )) && [[ -n ${SUDO_USER:-} && ${SUDO_USER:-} != root ]]; then
+    sudo_home=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+    [[ -z $sudo_home ]] || config_home="$sudo_home/.config"
+  fi
+  SITES_FILE="$config_home/omarchy/focus-sites"
+fi
+
+SITES=()
+TEMP_FILE=""
+
+cleanup() {
+  [[ -z $TEMP_FILE || ! -e $TEMP_FILE ]] || rm -f -- "$TEMP_FILE"
+}
+trap cleanup EXIT
+
+fail() {
+  echo "focus: $*" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'USAGE'
+Usage: focus [on|off|toggle|status|list]
+
+  on       Block every configured domain (default)
+  off      Remove the managed block from /etc/hosts
+  toggle   Switch focus mode on or off
+  status   Print on or off and return 0 while active
+  list     Print the configured domains
+USAGE
+}
+
+validate_site() {
+  local site="$1"
+  local label=""
+  local -a labels=()
+
+  [[ $site =~ ^[a-z0-9]([a-z0-9.-]*[a-z0-9])?$ ]] || return 1
+  [[ $site == *.* && $site != *..* ]] || return 1
+
+  IFS=. read -r -a labels <<<"$site"
+  for label in "${labels[@]}"; do
+    (( ${#label} >= 1 && ${#label} <= 63 )) || return 1
+    [[ $label =~ ^[a-z0-9]([a-z0-9-]*[a-z0-9])?$ ]] || return 1
+  done
+}
+
+load_sites() {
+  local source_file="$SITES_FILE"
+  local raw=""
+  local site=""
+  local -A seen=()
+
+  [[ -f $source_file ]] || source_file="$DEFAULT_SITES_FILE"
+  [[ -f $source_file ]] || fail "missing default site list: $DEFAULT_SITES_FILE"
+
+  while IFS= read -r raw || [[ -n $raw ]]; do
+    raw="${raw%%#*}"
+    site=$(printf '%s' "$raw" | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')
+    site="${site,,}"
+    [[ -n $site ]] || continue
+    validate_site "$site" || fail "invalid domain in $source_file: $site"
+    if [[ -z ${seen[$site]:-} ]]; then
+      SITES+=("$site")
+      seen[$site]=1
+    fi
+  done <"$source_file"
+
+  (( ${#SITES[@]} > 0 )) || fail "site list is empty: $source_file"
+}
+
+focus_active() {
+  grep -Fxq "$MARKER_BEGIN" "$HOSTS_FILE" 2>/dev/null
+}
+
+strip_managed_entries() {
+  awk -v begin="$MARKER_BEGIN" -v end="$MARKER_END" -v legacy="$LEGACY_MARKER" '
+    $0 == begin {
+      if (inside) exit 42
+      inside = 1
+      next
+    }
+    $0 == end {
+      if (!inside) exit 43
+      inside = 0
+      next
+    }
+    index($0, legacy) > 0 { next }
+    !inside { print }
+    END {
+      if (inside) exit 44
+    }
+  ' "$HOSTS_FILE"
+}
+
+write_hosts() {
+  local desired="$1"
+  local hosts_dir=""
+  local lock_file=""
+  local site=""
+
+  [[ -f $HOSTS_FILE ]] || fail "hosts file not found: $HOSTS_FILE"
+  hosts_dir=$(dirname -- "$HOSTS_FILE")
+  if [[ $TESTING == 1 ]]; then
+    lock_file="$HOSTS_FILE.lock"
+  else
+    lock_file=/run/lock/omarchy-focus.lock
+  fi
+
+  exec 9>"$lock_file"
+  flock -x 9
+
+  TEMP_FILE=$(mktemp "$hosts_dir/.omarchy-focus.XXXXXX")
+  if ! strip_managed_entries >"$TEMP_FILE"; then
+    fail "managed markers in $HOSTS_FILE are malformed; no changes were written"
+  fi
+
+  if [[ $desired == on ]]; then
+    printf '\n%s\n' "$MARKER_BEGIN" >>"$TEMP_FILE"
+    for site in "${SITES[@]}"; do
+      printf '127.0.0.1 %s\n::1 %s\n' "$site" "$site" >>"$TEMP_FILE"
+    done
+    printf '%s\n' "$MARKER_END" >>"$TEMP_FILE"
+  fi
+
+  chmod --reference="$HOSTS_FILE" "$TEMP_FILE"
+  chown --reference="$HOSTS_FILE" "$TEMP_FILE" 2>/dev/null || true
+  mv -f -- "$TEMP_FILE" "$HOSTS_FILE"
+  TEMP_FILE=""
+}
+
+refresh_widget() {
+  omarchy shell -q "$PLUGIN_ID" refresh >/dev/null 2>&1 || true
+}
+
+print_state() {
+  if focus_active; then
+    echo "on"
+    return 0
+  fi
+  echo "off"
+  return 1
+}
+
+run_privileged() {
+  local action="$1"
+  shift
+
+  if [[ -t 0 && -t 1 ]]; then
+    sudo -- "$SELF_PATH" --privileged "$action" "$@"
+  else
+    pkexec "$SELF_PATH" --privileged "$action" "$@"
+  fi
+}
+
+privileged=0
+if [[ ${1:-} == --privileged ]]; then
+  privileged=1
+  shift
+fi
+
+action="${1:-on}"
+[[ $# -eq 0 ]] || shift
+
+case "$action" in
+  -h | --help | help)
+    usage
+    exit 0
+    ;;
+  status)
+    print_state
+    exit $?
+    ;;
+  list)
+    load_sites
+    printf '%s\n' "${SITES[@]}"
+    exit 0
+    ;;
+  on | toggle)
+    if (( privileged )); then
+      (( EUID == 0 )) || fail "--privileged requires root"
+      SITES=("$@")
+      (( ${#SITES[@]} > 0 )) || fail "no domains were supplied to the privileged helper"
+      for site in "${SITES[@]}"; do
+        validate_site "$site" || fail "invalid domain supplied to privileged helper: $site"
+      done
+    else
+      load_sites
+    fi
+    ;;
+  off)
+    (( privileged == 0 || EUID == 0 )) || fail "--privileged requires root"
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac
+
+if [[ $TESTING != 1 && $EUID -ne 0 ]]; then
+  run_privileged "$action" "${SITES[@]}"
+  refresh_widget
+  print_state || true
+  exit 0
+fi
+
+case "$action" in
+  on)
+    write_hosts on
+    ;;
+  off)
+    write_hosts off
+    ;;
+  toggle)
+    if focus_active; then
+      write_hosts off
+    else
+      write_hosts on
+    fi
+    ;;
+esac
+
+if (( ! privileged )); then
+  refresh_widget
+  print_state || true
+fi
