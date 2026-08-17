@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.janhesters.focus",
+  "name": "Omarchy Focus",
+  "version": "1.0.0",
+  "author": "Jan Hesters",
+  "license": "MIT",
+  "description": "Block distracting websites and show focus status in the Omarchy bar.",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Focus",
+    "description": "Toggle distracting websites and show focus status.",
+    "category": "Status",
+    "allowMultiple": false,
+    "defaultSection": "center",
+    "schema": [
+      {
+        "key": "showWhenInactive",
+        "type": "boolean",
+        "label": "Show when inactive",
+        "description": "Keep a dimmed focus icon in the bar when websites are unblocked.",
+        "defaultValue": true
+      }
+    ]
+  }
+}

@@ -1,56 +1,136 @@
-# Omarchy Focus
+# Block distracting websites from the Omarchy bar
 
-Block distracting websites on [Omarchy](https://omarchy.org/) with a single command. Includes a Waybar indicator that shows when focus mode is active.
-
-![Focus mode active on Omarchy](screenshots/desktop.png)
-
-![Waybar detail showing the focus indicator](screenshots/waybar-detail.png)
+Omarchy Focus blocks distracting websites through `/etc/hosts`. Its Omarchy 4 bar widget shows the current state and lets you switch focus mode on or off.
 
 ## Install
 
-```bash
-git clone https://github.com/janhesters/omarchy-focus.git
-cd omarchy-focus
-./install.sh
-```
-
-The install script places two scripts in `~/.local/bin/`, adds a custom module to your Waybar config, and restarts Waybar.
-
-## Usage
+You need Omarchy 4 or newer.
 
 ```bash
-focus         # Block sites
-focus off     # Unblock sites
+omarchy plugin add https://github.com/janhesters/omarchy-focus.git --enable
 ```
 
-Clicking the Waybar indicator also runs `focus off`.
+The widget appears in the center section. Move it when needed:
+
+```bash
+omarchy bar move io.github.janhesters.focus --section right
+```
+
+The icon is dimmed while focus mode is off and uses your theme's urgent color while active. Turn off `Show when inactive` in the widget settings if you only want to see the active indicator.
+
+## Use the widget
+
+Click the icon to switch focus mode. Omarchy asks for your password through Polkit because the plugin updates `/etc/hosts`.
+
+The plugin only changes the block between these markers:
+
+```text
+# >>> omarchy-focus >>>
+# <<< omarchy-focus <<<
+```
+
+Repeated clicks don't create duplicate entries.
+
+## Add the `focus` command
+
+Omarchy plugins can't install commands automatically. Add an optional link when you want the original terminal command:
+
+```bash
+mkdir -p ~/.local/bin
+ln -s ~/.config/omarchy/plugins/io.github.janhesters.focus/focus ~/.local/bin/focus
+```
+
+If `~/.local/bin/focus` already exists, move or remove it before creating the link.
+
+```bash
+focus          # Turn focus mode on
+focus off      # Turn focus mode off
+focus toggle   # Switch the current state
+focus status   # Print on or off
+focus list     # Print the configured domains
+```
+
+Terminal commands use `sudo`. Bar clicks use `pkexec` so Omarchy can show a graphical authentication prompt.
 
 ## Configure blocked sites
 
-Edit `~/.local/bin/focus` and modify the `BLOCKED_SITES` array:
+Copy the default list into your Omarchy configuration:
 
 ```bash
-BLOCKED_SITES=(
-  "twitter.com"
-  "www.twitter.com"
-  "x.com"
-  "www.x.com"
-  "youtube.com"
-  "www.youtube.com"
-  "reddit.com"
-  "www.reddit.com"
-  "old.reddit.com"
-  "threads.com"
-  "www.threads.com"
-  "instagram.com"
-  "www.instagram.com"
-)
+mkdir -p ~/.config/omarchy
+cp ~/.config/omarchy/plugins/io.github.janhesters.focus/default-sites \
+  ~/.config/omarchy/focus-sites
 ```
 
-## How it works
+Edit `~/.config/omarchy/focus-sites`. Add one domain per line. List subdomains separately.
 
-`focus` adds entries to `/etc/hosts` that redirect blocked domains to `127.0.0.1`. It signals Waybar to update the indicator via `RTMIN+11`. Running `focus off` removes the entries and updates the indicator.
+```text
+youtube.com
+www.youtube.com
+reddit.com
+www.reddit.com
+```
 
-## Requirements
+Blank lines and lines starting with `#` are ignored. The helper validates every domain before it asks for root access.
 
-- [Omarchy](https://omarchy.org/) (Arch Linux + Hyprland + Waybar)
+## Update
+
+```bash
+omarchy plugin update io.github.janhesters.focus
+```
+
+Your site list stays in `~/.config/omarchy/focus-sites`, outside the plugin checkout.
+
+## Remove
+
+Turn focus mode off before removing the plugin:
+
+```bash
+focus off
+rm ~/.local/bin/focus  # Only remove this if it is the optional link above.
+omarchy plugin remove io.github.janhesters.focus
+```
+
+If you removed the plugin while focus mode was active, remove its marked block manually:
+
+```bash
+sudo sed -i '/^# >>> omarchy-focus >>>$/,/^# <<< omarchy-focus <<<$/{d;}' /etc/hosts
+```
+
+## Migrate from the Waybar version
+
+The `v0.1.0-waybar` tag preserves the old release. Before installing the Omarchy 4 plugin:
+
+```bash
+focus off
+mv ~/.local/bin/focus ~/.local/bin/focus.waybar-backup
+```
+
+Install the plugin, test the widget, and add the optional command link. The plugin does not edit old Waybar files.
+
+## Security and dependencies
+
+Omarchy plugins run as unsandboxed user code. This plugin invokes a small Bash helper with authenticated root access to update `/etc/hosts`. It does not add a sudoers rule, install packages, download code, or run a background service.
+
+Dependencies supplied by Omarchy and Arch Linux:
+
+- Bash
+- GNU coreutils, `awk`, `grep`, and `sed`
+- `flock` from util-linux
+- `sudo` and Polkit
+- Omarchy 4 and its Quickshell runtime
+
+Review `focus` before enabling the plugin.
+
+## Develop
+
+```bash
+omarchy plugin validate .
+qmllint -I "$OMARCHY_PATH/shell" BarWidget.qml
+shellcheck focus test/focus-test.sh
+./test/focus-test.sh
+```
+
+## License
+
+[MIT](LICENSE)
