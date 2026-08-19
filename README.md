@@ -1,6 +1,8 @@
 # Block distracting websites from the Omarchy bar
 
-Omarchy Focus blocks distracting websites through `/etc/hosts`. Its Omarchy 4 bar widget shows the current state and lets you switch focus mode on or off.
+Turn focus mode on or off without leaving the desktop. Omarchy Focus blocks your chosen domains through `/etc/hosts` and shows the current state in the Omarchy 4 bar.
+
+![Omarchy Focus with focus mode active](preview.jpg)
 
 ## Install
 

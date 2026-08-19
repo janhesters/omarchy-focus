@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "io.github.janhesters.focus",
   "name": "Omarchy Focus",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Jan Hesters",
   "license": "MIT",
-  "description": "Block distracting websites and show focus status in the Omarchy bar.",
+  "description": "Block distracting sites with one click and see focus status in the Omarchy bar.",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "Focus",
-    "description": "Toggle distracting websites and show focus status.",
+    "description": "Block distracting sites with one click and show focus status.",
     "category": "Status",
     "allowMultiple": false,
     "defaultSection": "center",
